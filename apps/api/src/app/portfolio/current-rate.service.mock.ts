@@ -78,6 +78,27 @@ function mockGetValue(symbol: string, date: Date) {
 
       return { marketPrice: 0 };
 
+    case 'NVEI.TO':
+      if (isSameDay(parseDate('2021-09-16'), date)) {
+        return { marketPrice: 175.04 };
+      } else if (isSameDay(parseDate('2021-11-15'), date)) {
+        return { marketPrice: 137.44 };
+      } else if (isSameDay(parseDate('2021-12-01'), date)) {
+        return { marketPrice: 116.89 };
+      }
+
+      // interpolate forward price, where NVEI.TO
+      // closed at $61.82 on 2022-06-01.
+
+      let days = Math.round(
+        (date.getTime() - parseDate('2021-09-16').getTime())
+        / (1000 * 3600 * 24));
+      let price = 1e79 * Math.exp(-0.004 * days);  // computed in Excel
+
+      return { marketPrice:
+        Math.round(price * 100) / 100  // round to 2 decimals
+      };
+
     default:
       return { marketPrice: 0 };
   }
