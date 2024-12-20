@@ -87,7 +87,7 @@
     </div>
   </div>
   <form [formGroup]="filterForm">
-    <ng-container *ngIf="!(isLoading || searchFormControl.value)">
+    @if (!searchFormControl.value) {
       <div class="date-range-selector-container p-3">
         <mat-form-field appearance="outline" class="w-100 without-hint">
           <mat-label i18n>Date Range</mat-label>
@@ -104,7 +104,7 @@
       <div class="p-3">
         <div class="mb-3">
           <mat-form-field appearance="outline" class="w-100 without-hint">
-            <mat-label i18n>Accounts</mat-label>
+            <mat-label i18n>Account</mat-label>
             <mat-select formControlName="account">
               <mat-option [value]="null" />
               @for (account of accounts; track account.id) {
@@ -124,7 +124,35 @@
         </div>
         <div class="mb-3">
           <mat-form-field appearance="outline" class="w-100 without-hint">
-            <mat-label i18n>Tags</mat-label>
+            <mat-label i18n>Holding</mat-label>
+            <mat-select
+              formControlName="holding"
+              [compareWith]="holdingComparisonFunction"
+            >
+              <mat-select-trigger>{{
+                filterForm.get('holding')?.value?.name
+              }}</mat-select-trigger>
+              <mat-option [value]="null" />
+              @for (holding of holdings; track holding.name) {
+                <mat-option [value]="holding">
+                  <div class="line-height-1 text-truncate">
+                    <span
+                      ><b>{{ holding.name }}</b></span
+                    >
+                    <br />
+                    <small class="text-muted"
+                      >{{ holding.symbol | gfSymbol }} ·
+                      {{ holding.currency }}</small
+                    >
+                  </div>
+                </mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        </div>
+        <div class="mb-3">
+          <mat-form-field appearance="outline" class="w-100 without-hint">
+            <mat-label i18n>Tag</mat-label>
             <mat-select formControlName="tag">
               <mat-option [value]="null" />
               @for (tag of tags; track tag.id) {
@@ -135,7 +163,7 @@
         </div>
         <div class="mb-3">
           <mat-form-field appearance="outline" class="w-100 without-hint">
-            <mat-label i18n>Asset Classes</mat-label>
+            <mat-label i18n>Asset Class</mat-label>
             <mat-select formControlName="assetClass">
               <mat-option [value]="null" />
               @for (assetClass of assetClasses; track assetClass.id) {
@@ -150,7 +178,9 @@
           <button
             i18n
             mat-button
-            [disabled]="!hasFilter(filterForm.value)"
+            [disabled]="
+              !hasFilter(filterForm.value) || !hasPermissionToChangeFilters
+            "
             (click)="onResetFilters()"
           >
             Reset Filters
@@ -160,13 +190,13 @@
             color="primary"
             i18n
             mat-flat-button
-            [disabled]="!filterForm.dirty"
+            [disabled]="!filterForm.dirty || !hasPermissionToChangeFilters"
             (click)="onApplyFilters()"
           >
             Apply Filters
           </button>
         </div>
       </div>
-    </ng-container>
+    }
   </form>
 </div>

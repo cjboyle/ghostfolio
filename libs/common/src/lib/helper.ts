@@ -108,7 +108,7 @@ export function downloadAsFile({
     content = JSON.stringify(content, undefined, '  ');
   }
 
-  const file = new Blob([<string>content], {
+  const file = new Blob([content as string], {
     type: contentType
   });
   a.href = URL.createObjectURL(file);
@@ -135,7 +135,7 @@ export function extractNumberFromString({
     // Remove non-numeric characters (excluding international formatting characters)
     const numericValue = value.replace(/[^\d.,'’\s]/g, '');
 
-    let parser = new NumberParser(locale);
+    const parser = new NumberParser(locale);
 
     return parser.parse(numericValue);
   } catch {

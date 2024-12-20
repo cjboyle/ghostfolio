@@ -1,4 +1,3 @@
-import { LookupItem } from '@ghostfolio/api/app/symbol/interfaces/lookup-item.interface';
 import { ConfigurationService } from '@ghostfolio/api/services/configuration/configuration.service';
 import {
   DataProviderInterface,
@@ -13,7 +12,11 @@ import {
 } from '@ghostfolio/api/services/interfaces/interfaces';
 import { DEFAULT_CURRENCY } from '@ghostfolio/common/config';
 import { DATE_FORMAT } from '@ghostfolio/common/helper';
-import { DataProviderInfo } from '@ghostfolio/common/interfaces';
+import {
+  DataProviderInfo,
+  LookupItem,
+  LookupResponse
+} from '@ghostfolio/common/interfaces';
 
 import { Injectable, Logger } from '@nestjs/common';
 import {
@@ -48,7 +51,7 @@ export class CoinGeckoService implements DataProviderInterface {
     }
   }
 
-  public canHandle(symbol: string) {
+  public canHandle() {
     return true;
   }
 
@@ -83,9 +86,9 @@ export class CoinGeckoService implements DataProviderInterface {
       let message = error;
 
       if (error?.code === 'ABORT_ERR') {
-        message = `RequestError: The operation to get the asset profile for ${symbol} was aborted because the request to the data provider took more than ${this.configurationService.get(
-          'REQUEST_TIMEOUT'
-        )}ms`;
+        message = `RequestError: The operation to get the asset profile for ${symbol} was aborted because the request to the data provider took more than ${(
+          this.configurationService.get('REQUEST_TIMEOUT') / 1000
+        ).toFixed(3)} seconds`;
       }
 
       Logger.error(message, 'CoinGeckoService');
@@ -221,9 +224,7 @@ export class CoinGeckoService implements DataProviderInterface {
     return 'bitcoin';
   }
 
-  public async search({
-    query
-  }: GetSearchParams): Promise<{ items: LookupItem[] }> {
+  public async search({ query }: GetSearchParams): Promise<LookupResponse> {
     let items: LookupItem[] = [];
 
     try {
@@ -254,9 +255,9 @@ export class CoinGeckoService implements DataProviderInterface {
       let message = error;
 
       if (error?.code === 'ABORT_ERR') {
-        message = `RequestError: The operation to search for ${query} was aborted because the request to the data provider took more than ${this.configurationService.get(
-          'REQUEST_TIMEOUT'
-        )}ms`;
+        message = `RequestError: The operation to search for ${query} was aborted because the request to the data provider took more than ${(
+          this.configurationService.get('REQUEST_TIMEOUT') / 1000
+        ).toFixed(3)} seconds`;
       }
 
       Logger.error(message, 'CoinGeckoService');

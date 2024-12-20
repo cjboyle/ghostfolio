@@ -1,35 +1,39 @@
 import { RuleSettings } from '@ghostfolio/api/models/interfaces/rule-settings.interface';
 import { Rule } from '@ghostfolio/api/models/rule';
 import { ExchangeRateDataService } from '@ghostfolio/api/services/exchange-rate-data/exchange-rate-data.service';
-import { UserSettings } from '@ghostfolio/common/interfaces';
-import { TimelinePosition } from '@ghostfolio/common/models';
+import { PortfolioPosition, UserSettings } from '@ghostfolio/common/interfaces';
 
 export class CurrencyClusterRiskBaseCurrencyCurrentInvestment extends Rule<Settings> {
-  private positions: TimelinePosition[];
+  private holdings: PortfolioPosition[];
 
   public constructor(
     protected exchangeRateDataService: ExchangeRateDataService,
-    positions: TimelinePosition[]
+    holdings: PortfolioPosition[]
   ) {
     super(exchangeRateDataService, {
       key: CurrencyClusterRiskBaseCurrencyCurrentInvestment.name,
       name: 'Investment: Base Currency'
     });
 
-    this.positions = positions;
+    this.holdings = holdings;
   }
 
   public evaluate(ruleSettings: Settings) {
-    const positionsGroupedByCurrency = this.groupCurrentPositionsByAttribute(
-      this.positions,
+    const holdingsGroupedByCurrency = this.groupCurrentHoldingsByAttribute(
+      this.holdings,
       'currency',
       ruleSettings.baseCurrency
     );
 
-    let maxItem = positionsGroupedByCurrency[0];
+    let maxItem = holdingsGroupedByCurrency[0];
     let totalValue = 0;
 
-    positionsGroupedByCurrency.forEach((groupItem) => {
+    const baseCurrencyValue =
+      holdingsGroupedByCurrency.find(({ groupKey }) => {
+        return groupKey === ruleSettings.baseCurrency;
+      })?.value ?? 0;
+
+    for (const groupItem of holdingsGroupedByCurrency) {
       // Calculate total value
       totalValue += groupItem.value;
 
@@ -37,13 +41,11 @@ export class CurrencyClusterRiskBaseCurrencyCurrentInvestment extends Rule<Setti
       if (groupItem.investment > maxItem.investment) {
         maxItem = groupItem;
       }
-    });
+    }
 
-    const baseCurrencyItem = positionsGroupedByCurrency.find((item) => {
-      return item.groupKey === ruleSettings.baseCurrency;
-    });
-
-    const baseCurrencyValueRatio = baseCurrencyItem?.value / totalValue || 0;
+    const baseCurrencyValueRatio = totalValue
+      ? baseCurrencyValue / totalValue
+      : 0;
 
     if (maxItem?.groupKey !== ruleSettings.baseCurrency) {
       return {
@@ -62,10 +64,14 @@ export class CurrencyClusterRiskBaseCurrencyCurrentInvestment extends Rule<Setti
     };
   }
 
-  public getSettings(aUserSettings: UserSettings): Settings {
+  public getConfiguration() {
+    return undefined;
+  }
+
+  public getSettings({ baseCurrency, xRayRules }: UserSettings): Settings {
     return {
-      baseCurrency: aUserSettings.baseCurrency,
-      isActive: aUserSettings.xRayRules[this.getKey()].isActive
+      baseCurrency,
+      isActive: xRayRules?.[this.getKey()].isActive ?? true
     };
   }
 }

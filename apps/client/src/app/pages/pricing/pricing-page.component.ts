@@ -6,6 +6,7 @@ import { hasPermission, permissions } from '@ghostfolio/common/permissions';
 import { translate } from '@ghostfolio/ui/i18n';
 
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
+import { StringValue } from 'ms';
 import { StripeService } from 'ngx-stripe';
 import { Subject } from 'rxjs';
 import { catchError, switchMap, takeUntil } from 'rxjs/operators';
@@ -20,6 +21,7 @@ export class PricingPageComponent implements OnDestroy, OnInit {
   public baseCurrency: string;
   public coupon: number;
   public couponId: string;
+  public durationExtension: StringValue;
   public hasPermissionToUpdateUserSettings: boolean;
   public importAndExportTooltipBasic = translate(
     'DATA_IMPORT_AND_EXPORT_TOOLTIP_BASIC'
@@ -33,6 +35,9 @@ export class PricingPageComponent implements OnDestroy, OnInit {
   public isLoggedIn: boolean;
   public price: number;
   public priceId: string;
+  public professionalDataProviderTooltipPremium = translate(
+    'PROFESSIONAL_DATA_PROVIDER_TOOLTIP_PREMIUM'
+  );
   public routerLinkFeatures = ['/' + $localize`:snake-case:features`];
   public routerLinkRegister = ['/' + $localize`:snake-case:register`];
   public user: User;
@@ -48,11 +53,12 @@ export class PricingPageComponent implements OnDestroy, OnInit {
   ) {}
 
   public ngOnInit() {
-    const { baseCurrency, subscriptions } = this.dataService.fetchInfo();
+    const { baseCurrency, subscriptionOffers } = this.dataService.fetchInfo();
     this.baseCurrency = baseCurrency;
 
-    this.coupon = subscriptions?.default?.coupon;
-    this.price = subscriptions?.default?.price;
+    this.coupon = subscriptionOffers?.default?.coupon;
+    this.durationExtension = subscriptionOffers?.default?.durationExtension;
+    this.price = subscriptionOffers?.default?.price;
 
     this.userService.stateChanged
       .pipe(takeUntil(this.unsubscribeSubject))
@@ -65,11 +71,18 @@ export class PricingPageComponent implements OnDestroy, OnInit {
             permissions.updateUserSettings
           );
 
-          this.coupon = subscriptions?.[this.user?.subscription?.offer]?.coupon;
+          this.coupon =
+            subscriptionOffers?.[this.user?.subscription?.offer]?.coupon;
           this.couponId =
-            subscriptions?.[this.user.subscription.offer]?.couponId;
-          this.price = subscriptions?.[this.user?.subscription?.offer]?.price;
-          this.priceId = subscriptions?.[this.user.subscription.offer]?.priceId;
+            subscriptionOffers?.[this.user.subscription.offer]?.couponId;
+          this.durationExtension =
+            subscriptionOffers?.[
+              this.user?.subscription?.offer
+            ]?.durationExtension;
+          this.price =
+            subscriptionOffers?.[this.user?.subscription?.offer]?.price;
+          this.priceId =
+            subscriptionOffers?.[this.user.subscription.offer]?.priceId;
 
           this.changeDetectorRef.markForCheck();
         }

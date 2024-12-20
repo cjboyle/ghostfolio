@@ -7,7 +7,7 @@ import { ImpersonationStorageService } from '@ghostfolio/client/services/imperso
 import { UserService } from '@ghostfolio/client/services/user/user.service';
 import { DEFAULT_PAGE_SIZE } from '@ghostfolio/common/config';
 import { downloadAsFile } from '@ghostfolio/common/helper';
-import { User } from '@ghostfolio/common/interfaces';
+import { AssetProfileIdentifier, User } from '@ghostfolio/common/interfaces';
 import { hasPermission, permissions } from '@ghostfolio/common/permissions';
 
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
@@ -138,6 +138,16 @@ export class ActivitiesPageComponent implements OnDestroy, OnInit {
     this.fetchActivities();
   }
 
+  public onClickActivity({ dataSource, symbol }: AssetProfileIdentifier) {
+    this.router.navigate([], {
+      queryParams: {
+        dataSource,
+        symbol,
+        holdingDetailDialog: true
+      }
+    });
+  }
+
   public onCloneActivity(aActivity: Activity) {
     this.openCreateActivityDialog(aActivity);
   }
@@ -208,10 +218,10 @@ export class ActivitiesPageComponent implements OnDestroy, OnInit {
 
   public onImport() {
     const dialogRef = this.dialog.open(ImportActivitiesDialog, {
-      data: <ImportActivitiesDialogParams>{
+      data: {
         deviceType: this.deviceType,
         user: this.user
-      },
+      } as ImportActivitiesDialogParams,
       width: this.deviceType === 'mobile' ? '100vw' : '50rem'
     });
 
@@ -225,11 +235,11 @@ export class ActivitiesPageComponent implements OnDestroy, OnInit {
 
   public onImportDividends() {
     const dialogRef = this.dialog.open(ImportActivitiesDialog, {
-      data: <ImportActivitiesDialogParams>{
+      data: {
         activityTypes: ['DIVIDEND'],
         deviceType: this.deviceType,
         user: this.user
-      },
+      } as ImportActivitiesDialogParams,
       width: this.deviceType === 'mobile' ? '100vw' : '50rem'
     });
 
@@ -262,7 +272,7 @@ export class ActivitiesPageComponent implements OnDestroy, OnInit {
         accounts: this.user?.accounts,
         user: this.user
       },
-      height: this.deviceType === 'mobile' ? '97.5vh' : '80vh',
+      height: this.deviceType === 'mobile' ? '98vh' : '80vh',
       width: this.deviceType === 'mobile' ? '100vw' : '50rem'
     });
 
@@ -311,7 +321,7 @@ export class ActivitiesPageComponent implements OnDestroy, OnInit {
             },
             user: this.user
           },
-          height: this.deviceType === 'mobile' ? '97.5vh' : '80vh',
+          height: this.deviceType === 'mobile' ? '98vh' : '80vh',
           width: this.deviceType === 'mobile' ? '100vw' : '50rem'
         });
 

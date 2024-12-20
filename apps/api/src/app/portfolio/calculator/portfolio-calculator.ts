@@ -15,8 +15,8 @@ import { getIntervalFromDateRange } from '@ghostfolio/common/calculation-helper'
 import {
   PORTFOLIO_SNAPSHOT_PROCESS_JOB_NAME,
   PORTFOLIO_SNAPSHOT_PROCESS_JOB_OPTIONS,
-  PORTFOLIO_SNAPSHOT_QUEUE_PRIORITY_HIGH,
-  PORTFOLIO_SNAPSHOT_QUEUE_PRIORITY_LOW
+  PORTFOLIO_SNAPSHOT_COMPUTATION_QUEUE_PRIORITY_HIGH,
+  PORTFOLIO_SNAPSHOT_COMPUTATION_QUEUE_PRIORITY_LOW
 } from '@ghostfolio/common/config';
 import {
   DATE_FORMAT,
@@ -104,6 +104,10 @@ export abstract class PortfolioCalculator {
 
     let dateOfFirstActivity = new Date();
 
+    if (this.accountBalanceItems[0]) {
+      dateOfFirstActivity = parseDate(this.accountBalanceItems[0].date);
+    }
+
     this.activities = activities
       .map(
         ({
@@ -172,6 +176,7 @@ export abstract class PortfolioCalculator {
     if (!transactionPoints.length) {
       return {
         currentValueInBaseCurrency: new Big(0),
+        errors: [],
         hasErrors: false,
         historicalData: [],
         positions: [],
@@ -213,7 +218,7 @@ export abstract class PortfolioCalculator {
       }
     }
 
-    let exchangeRatesByCurrency =
+    const exchangeRatesByCurrency =
       await this.exchangeRateDataService.getExchangeRatesByCurrency({
         currencies: uniq(Object.values(currencies)),
         endDate: endOfDay(this.endDate),
@@ -257,7 +262,7 @@ export abstract class PortfolioCalculator {
 
     const daysInMarket = differenceInDays(this.endDate, this.startDate);
 
-    let chartDateMap = this.getChartDateMap({
+    const chartDateMap = this.getChartDateMap({
       endDate: this.endDate,
       startDate: this.startDate,
       step: Math.round(
@@ -268,6 +273,10 @@ export abstract class PortfolioCalculator {
           )
       )
     });
+
+    for (const accountBalanceItem of this.accountBalanceItems) {
+      chartDateMap[accountBalanceItem.date] = true;
+    }
 
     const chartDates = sortBy(Object.keys(chartDateMap), (chartDate) => {
       return chartDate;
@@ -447,9 +456,28 @@ export abstract class PortfolioCalculator {
       }
     }
 
-    let lastDate = chartDates[0];
+    const accountBalanceItemsMap = this.accountBalanceItems.reduce(
+      (map, { date, value }) => {
+        map[date] = new Big(value);
+
+        return map;
+      },
+      {} as { [date: string]: Big }
+    );
+
+    const accountBalanceMap: { [date: string]: Big } = {};
+
+    let lastKnownBalance = new Big(0);
 
     for (const dateString of chartDates) {
+      if (accountBalanceItemsMap[dateString] !== undefined) {
+        // If there's an exact balance for this date, update lastKnownBalance
+        lastKnownBalance = accountBalanceItemsMap[dateString];
+      }
+
+      // Add the most recent balance to the accountBalanceMap
+      accountBalanceMap[dateString] = lastKnownBalance;
+
       for (const symbol of Object.keys(valuesBySymbol)) {
         const symbolValues = valuesBySymbol[symbol];
 
@@ -492,18 +520,7 @@ export abstract class PortfolioCalculator {
             accumulatedValuesByDate[dateString]
               ?.investmentValueWithCurrencyEffect ?? new Big(0)
           ).add(investmentValueWithCurrencyEffect),
-          totalAccountBalanceWithCurrencyEffect: this.accountBalanceItems.some(
-            ({ date }) => {
-              return date === dateString;
-            }
-          )
-            ? new Big(
-                this.accountBalanceItems.find(({ date }) => {
-                  return date === dateString;
-                }).value
-              )
-            : (accumulatedValuesByDate[lastDate]
-                ?.totalAccountBalanceWithCurrencyEffect ?? new Big(0)),
+          totalAccountBalanceWithCurrencyEffect: accountBalanceMap[dateString],
           totalCurrentValue: (
             accumulatedValuesByDate[dateString]?.totalCurrentValue ?? new Big(0)
           ).add(currentValue),
@@ -537,8 +554,6 @@ export abstract class PortfolioCalculator {
           ).add(timeWeightedInvestmentValueWithCurrencyEffect)
         };
       }
-
-      lastDate = dateString;
     }
 
     const historicalData: HistoricalDataItem[] = Object.entries(
@@ -687,9 +702,9 @@ export abstract class PortfolioCalculator {
 
     let netPerformanceAtStartDate: number;
     let netPerformanceWithCurrencyEffectAtStartDate: number;
-    let totalInvestmentValuesWithCurrencyEffect: number[] = [];
+    const totalInvestmentValuesWithCurrencyEffect: number[] = [];
 
-    for (let historicalDataItem of historicalData) {
+    for (const historicalDataItem of historicalData) {
       const date = resetHours(parseDate(historicalDataItem.date));
 
       if (!isBefore(date, start) && !isAfter(date, end)) {
@@ -733,12 +748,12 @@ export abstract class PortfolioCalculator {
             timeWeightedInvestmentValue === 0
               ? 0
               : netPerformanceWithCurrencyEffectSinceStartDate /
-                timeWeightedInvestmentValue,
+                timeWeightedInvestmentValue
           // TODO: Add net worth with valuables
           // netWorth: totalCurrentValueWithCurrencyEffect
           //   .plus(totalAccountBalanceWithCurrencyEffect)
           //   .toNumber()
-          netWorth: 0
+          // netWorth: 0
         });
       }
     }
@@ -815,16 +830,16 @@ export abstract class PortfolioCalculator {
     endDate: Date;
     startDate: Date;
     step: number;
-  }) {
+  }): { [date: string]: true } {
     // Create a map of all relevant chart dates:
     // 1. Add transaction point dates
-    let chartDateMap = this.transactionPoints.reduce((result, { date }) => {
+    const chartDateMap = this.transactionPoints.reduce((result, { date }) => {
       result[date] = true;
       return result;
     }, {});
 
     // 2. Add dates between transactions respecting the specified step size
-    for (let date of eachDayOfInterval(
+    for (const date of eachDayOfInterval(
       { end: endDate, start: startDate },
       { step }
     )) {
@@ -833,7 +848,7 @@ export abstract class PortfolioCalculator {
 
     if (step > 1) {
       // Reduce the step size of last 90 days
-      for (let date of eachDayOfInterval(
+      for (const date of eachDayOfInterval(
         { end: endDate, start: subDays(endDate, 90) },
         { step: 3 }
       )) {
@@ -841,7 +856,7 @@ export abstract class PortfolioCalculator {
       }
 
       // Reduce the step size of last 30 days
-      for (let date of eachDayOfInterval(
+      for (const date of eachDayOfInterval(
         { end: endDate, start: subDays(endDate, 30) },
         { step: 1 }
       )) {
@@ -853,7 +868,7 @@ export abstract class PortfolioCalculator {
     chartDateMap[format(endDate, DATE_FORMAT)] = true;
 
     // Make sure some key dates are present
-    for (let dateRange of ['1d', '1y', '5y', 'max', 'mtd', 'wtd', 'ytd']) {
+    for (const dateRange of ['1d', '1y', '5y', 'max', 'mtd', 'wtd', 'ytd']) {
       const { endDate: dateRangeEnd, startDate: dateRangeStart } =
         getIntervalFromDateRange(dateRange);
 
@@ -1066,7 +1081,7 @@ export abstract class PortfolioCalculator {
           opts: {
             ...PORTFOLIO_SNAPSHOT_PROCESS_JOB_OPTIONS,
             jobId,
-            priority: PORTFOLIO_SNAPSHOT_QUEUE_PRIORITY_LOW
+            priority: PORTFOLIO_SNAPSHOT_COMPUTATION_QUEUE_PRIORITY_LOW
           }
         });
       }
@@ -1082,7 +1097,7 @@ export abstract class PortfolioCalculator {
         opts: {
           ...PORTFOLIO_SNAPSHOT_PROCESS_JOB_OPTIONS,
           jobId,
-          priority: PORTFOLIO_SNAPSHOT_QUEUE_PRIORITY_HIGH
+          priority: PORTFOLIO_SNAPSHOT_COMPUTATION_QUEUE_PRIORITY_HIGH
         }
       });
 

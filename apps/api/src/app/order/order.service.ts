@@ -93,7 +93,7 @@ export class OrderService {
       userId: string;
     }
   ): Promise<Order> {
-    let Account;
+    let Account: Prisma.AccountCreateNestedOneWithoutOrderInput;
 
     if (data.accountId) {
       Account = {
@@ -124,6 +124,7 @@ export class OrderService {
       data.SymbolProfile.connectOrCreate.create.dataSource = dataSource;
       data.SymbolProfile.connectOrCreate.create.name = name;
       data.SymbolProfile.connectOrCreate.create.symbol = id;
+      data.SymbolProfile.connectOrCreate.create.userId = userId;
       data.SymbolProfile.connectOrCreate.where.dataSource_symbol = {
         dataSource,
         symbol: id
@@ -410,7 +411,7 @@ export class OrderService {
             where.SymbolProfile,
             {
               AND: [
-                { dataSource: <DataSource>filterByDataSource },
+                { dataSource: filterByDataSource as DataSource },
                 { symbol: filterBySymbol }
               ]
             }
@@ -419,7 +420,7 @@ export class OrderService {
       } else {
         where.SymbolProfile = {
           AND: [
-            { dataSource: <DataSource>filterByDataSource },
+            { dataSource: filterByDataSource as DataSource },
             { symbol: filterBySymbol }
           ]
         };
@@ -638,7 +639,7 @@ export class OrderService {
             {
               dataSource:
                 data.SymbolProfile.connect.dataSource_symbol.dataSource,
-              date: <Date>data.date,
+              date: data.date as Date,
               symbol: data.SymbolProfile.connect.dataSource_symbol.symbol
             }
           ],

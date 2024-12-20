@@ -1,6 +1,6 @@
-import { LookupItem } from '@ghostfolio/api/app/symbol/interfaces/lookup-item.interface';
 import { GfSymbolModule } from '@ghostfolio/client/pipes/symbol/symbol.module';
 import { DataService } from '@ghostfolio/client/services/data.service';
+import { LookupItem } from '@ghostfolio/common/interfaces';
 import { translate } from '@ghostfolio/ui/i18n';
 import { AbstractMatFormField } from '@ghostfolio/ui/shared/abstract-mat-form-field';
 
@@ -117,17 +117,17 @@ export class GfSymbolAutocompleteComponent
 
     this.control.valueChanges
       .pipe(
-        debounceTime(400),
-        distinctUntilChanged(),
         filter((query) => {
           return isString(query) && query.length > 1;
         }),
-        takeUntil(this.unsubscribeSubject),
         tap(() => {
           this.isLoading = true;
 
           this.changeDetectorRef.markForCheck();
         }),
+        debounceTime(400),
+        distinctUntilChanged(),
+        takeUntil(this.unsubscribeSubject),
         switchMap((query: string) => {
           return this.dataService.fetchSymbols({
             query,

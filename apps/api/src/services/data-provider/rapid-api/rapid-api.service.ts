@@ -1,4 +1,3 @@
-import { LookupItem } from '@ghostfolio/api/app/symbol/interfaces/lookup-item.interface';
 import { ConfigurationService } from '@ghostfolio/api/services/configuration/configuration.service';
 import {
   DataProviderInterface,
@@ -13,7 +12,10 @@ import {
 } from '@ghostfolio/api/services/interfaces/interfaces';
 import { ghostfolioFearAndGreedIndexSymbol } from '@ghostfolio/common/config';
 import { DATE_FORMAT, getYesterday } from '@ghostfolio/common/helper';
-import { DataProviderInfo } from '@ghostfolio/common/interfaces';
+import {
+  DataProviderInfo,
+  LookupResponse
+} from '@ghostfolio/common/interfaces';
 
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource, SymbolProfile } from '@prisma/client';
@@ -26,7 +28,7 @@ export class RapidApiService implements DataProviderInterface {
     private readonly configurationService: ConfigurationService
   ) {}
 
-  public canHandle(symbol: string) {
+  public canHandle() {
     return !!this.configurationService.get('API_KEY_RAPID_API');
   }
 
@@ -121,7 +123,7 @@ export class RapidApiService implements DataProviderInterface {
     return undefined;
   }
 
-  public async search({}: GetSearchParams): Promise<{ items: LookupItem[] }> {
+  public async search({}: GetSearchParams): Promise<LookupResponse> {
     return { items: [] };
   }
 
@@ -157,9 +159,9 @@ export class RapidApiService implements DataProviderInterface {
       let message = error;
 
       if (error?.code === 'ABORT_ERR') {
-        message = `RequestError: The operation was aborted because the request to the data provider took more than ${this.configurationService.get(
-          'REQUEST_TIMEOUT'
-        )}ms`;
+        message = `RequestError: The operation was aborted because the request to the data provider took more than ${(
+          this.configurationService.get('REQUEST_TIMEOUT') / 1000
+        ).toFixed(3)} seconds`;
       }
 
       Logger.error(message, 'RapidApiService');

@@ -1,4 +1,3 @@
-import { LookupItem } from '@ghostfolio/api/app/symbol/interfaces/lookup-item.interface';
 import { ConfigurationService } from '@ghostfolio/api/services/configuration/configuration.service';
 import {
   DataProviderInterface,
@@ -20,6 +19,7 @@ import {
 } from '@ghostfolio/common/helper';
 import {
   DataProviderInfo,
+  LookupResponse,
   ScraperConfiguration
 } from '@ghostfolio/common/interfaces';
 
@@ -29,7 +29,7 @@ import * as cheerio from 'cheerio';
 import { isUUID } from 'class-validator';
 import { addDays, format, isBefore } from 'date-fns';
 import got, { Headers } from 'got';
-import jsonpath from 'jsonpath';
+import * as jsonpath from 'jsonpath';
 
 @Injectable()
 export class ManualService implements DataProviderInterface {
@@ -39,7 +39,7 @@ export class ManualService implements DataProviderInterface {
     private readonly symbolProfileService: SymbolProfileService
   ) {}
 
-  public canHandle(symbol: string) {
+  public canHandle() {
     return true;
   }
 
@@ -86,12 +86,8 @@ export class ManualService implements DataProviderInterface {
       const [symbolProfile] = await this.symbolProfileService.getSymbolProfiles(
         [{ symbol, dataSource: this.getName() }]
       );
-      const {
-        defaultMarketPrice,
-        headers = {},
-        selector,
-        url
-      } = symbolProfile?.scraperConfiguration ?? {};
+      const { defaultMarketPrice, selector, url } =
+        symbolProfile?.scraperConfiguration ?? {};
 
       if (defaultMarketPrice) {
         const historical: {
@@ -223,9 +219,7 @@ export class ManualService implements DataProviderInterface {
     return undefined;
   }
 
-  public async search({
-    query
-  }: GetSearchParams): Promise<{ items: LookupItem[] }> {
+  public async search({ query }: GetSearchParams): Promise<LookupResponse> {
     let items = await this.prismaService.symbolProfile.findMany({
       select: {
         assetClass: true,

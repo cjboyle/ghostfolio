@@ -5,9 +5,9 @@ import { UserService } from '@ghostfolio/api/app/user/user.service';
 import { ConfigurationService } from '@ghostfolio/api/services/configuration/configuration.service';
 import { ExchangeRateDataService } from '@ghostfolio/api/services/exchange-rate-data/exchange-rate-data.service';
 import { PropertyService } from '@ghostfolio/api/services/property/property.service';
-import { TagService } from '@ghostfolio/api/services/tag/tag.service';
 import {
   DEFAULT_CURRENCY,
+  HEADER_KEY_TOKEN,
   PROPERTY_BETTER_UPTIME_MONITOR_ID,
   PROPERTY_COUNTRIES_OF_SUBSCRIBERS,
   PROPERTY_DEMO_USER_ID,
@@ -24,10 +24,10 @@ import {
 import {
   InfoItem,
   Statistics,
-  Subscription
+  SubscriptionOffer
 } from '@ghostfolio/common/interfaces';
 import { permissions } from '@ghostfolio/common/permissions';
-import { SubscriptionOffer } from '@ghostfolio/common/types';
+import { SubscriptionOfferKey } from '@ghostfolio/common/types';
 
 import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -47,7 +47,6 @@ export class InfoService {
     private readonly platformService: PlatformService,
     private readonly propertyService: PropertyService,
     private readonly redisCacheService: RedisCacheService,
-    private readonly tagService: TagService,
     private readonly userService: UserService
   ) {}
 
@@ -103,8 +102,7 @@ export class InfoService {
       isUserSignupEnabled,
       platforms,
       statistics,
-      subscriptions,
-      tags
+      subscriptionOffers
     ] = await Promise.all([
       this.benchmarkService.getBenchmarkAssetProfiles(),
       this.getDemoAuthToken(),
@@ -113,8 +111,7 @@ export class InfoService {
         orderBy: { name: 'asc' }
       }),
       this.getStatistics(),
-      this.getSubscriptions(),
-      this.tagService.get()
+      this.getSubscriptionOffers()
     ]);
 
     if (isUserSignupEnabled) {
@@ -129,8 +126,7 @@ export class InfoService {
       isReadOnlyMode,
       platforms,
       statistics,
-      subscriptions,
-      tags,
+      subscriptionOffers,
       baseCurrency: DEFAULT_CURRENCY,
       currencies: this.exchangeRateDataService.getCurrencies()
     };
@@ -147,7 +143,7 @@ export class InfoService {
           },
           {
             Analytics: {
-              updatedAt: {
+              lastRequestAt: {
                 gt: subDays(new Date(), aDays)
               }
             }
@@ -319,8 +315,8 @@ export class InfoService {
     return statistics;
   }
 
-  private async getSubscriptions(): Promise<{
-    [offer in SubscriptionOffer]: Subscription;
+  private async getSubscriptionOffers(): Promise<{
+    [offer in SubscriptionOfferKey]: SubscriptionOffer;
   }> {
     if (!this.configurationService.get('ENABLE_FEATURE_SUBSCRIPTION')) {
       return undefined;
@@ -352,7 +348,7 @@ export class InfoService {
           )}&to${format(new Date(), DATE_FORMAT)}`,
           {
             headers: {
-              Authorization: `Bearer ${this.configurationService.get(
+              [HEADER_KEY_TOKEN]: `Bearer ${this.configurationService.get(
                 'API_KEY_BETTER_UPTIME'
               )}`
             },

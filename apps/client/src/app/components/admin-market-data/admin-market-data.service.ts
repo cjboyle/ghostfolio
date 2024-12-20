@@ -2,14 +2,17 @@ import { ConfirmationDialogType } from '@ghostfolio/client/core/notification/con
 import { NotificationService } from '@ghostfolio/client/core/notification/notification.service';
 import { AdminService } from '@ghostfolio/client/services/admin.service';
 import { ghostfolioScraperApiSymbolPrefix } from '@ghostfolio/common/config';
-import { getCurrencyFromSymbol, isCurrency } from '@ghostfolio/common/helper';
+import {
+  getCurrencyFromSymbol,
+  isDerivedCurrency
+} from '@ghostfolio/common/helper';
 import {
   AssetProfileIdentifier,
   AdminMarketDataItem
 } from '@ghostfolio/common/interfaces';
 
 import { Injectable } from '@angular/core';
-import { EMPTY, catchError, finalize, forkJoin, takeUntil } from 'rxjs';
+import { EMPTY, catchError, finalize, forkJoin } from 'rxjs';
 
 @Injectable()
 export class AdminMarketDataService {
@@ -56,10 +59,9 @@ export class AdminMarketDataService {
             }),
             finalize(() => {
               window.location.reload();
-              setTimeout(() => {}, 300);
             })
           )
-          .subscribe(() => {});
+          .subscribe();
       },
       confirmType: ConfirmationDialogType.Warn,
       title: $localize`Do you really want to delete these profiles?`
@@ -74,7 +76,7 @@ export class AdminMarketDataService {
     return (
       activitiesCount === 0 &&
       !isBenchmark &&
-      !isCurrency(getCurrencyFromSymbol(symbol)) &&
+      !isDerivedCurrency(getCurrencyFromSymbol(symbol)) &&
       !symbol.startsWith(ghostfolioScraperApiSymbolPrefix)
     );
   }

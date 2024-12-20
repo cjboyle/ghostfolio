@@ -65,6 +65,20 @@ export class UserService extends ObservableStore<UserStoreState> {
       });
     }
 
+    if (user?.settings['filters.dataSource']) {
+      filters.push({
+        id: user.settings['filters.dataSource'],
+        type: 'DATA_SOURCE'
+      });
+    }
+
+    if (user?.settings['filters.symbol']) {
+      filters.push({
+        id: user.settings['filters.symbol'],
+        type: 'SYMBOL'
+      });
+    }
+
     if (user?.settings['filters.tags']) {
       filters.push({
         id: user.settings['filters.tags'][0],
@@ -104,15 +118,17 @@ export class UserService extends ObservableStore<UserStoreState> {
         ) {
           const dialogRef = this.dialog.open(SubscriptionInterstitialDialog, {
             autoFocus: false,
-            data: <SubscriptionInterstitialDialogParams>{},
-            height: this.deviceType === 'mobile' ? '97.5vh' : '80vh',
+            data: {
+              user
+            } as SubscriptionInterstitialDialogParams,
+            height: this.deviceType === 'mobile' ? '98vh' : '80vh',
             width: this.deviceType === 'mobile' ? '100vw' : '50rem'
           });
 
           dialogRef
             .afterClosed()
             .pipe(takeUntil(this.unsubscribeSubject))
-            .subscribe(() => {});
+            .subscribe();
         }
 
         return user;

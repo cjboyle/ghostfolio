@@ -56,6 +56,9 @@ export class HeaderComponent implements OnChanges {
 
   @Input() currentRoute: string;
   @Input() deviceType: string;
+  @Input() hasPermissionToChangeDateRange: boolean;
+  @Input() hasPermissionToChangeFilters: boolean;
+  @Input() hasPromotion: boolean;
   @Input() hasTabs: boolean;
   @Input() info: InfoItem;
   @Input() pageTitle: string;
@@ -172,17 +175,17 @@ export class HeaderComponent implements OnChanges {
     const userSetting: UpdateUserSettingDto = {};
 
     for (const filter of filters) {
-      let filtersType: string;
-
       if (filter.type === 'ACCOUNT') {
-        filtersType = 'accounts';
+        userSetting['filters.accounts'] = filter.id ? [filter.id] : null;
       } else if (filter.type === 'ASSET_CLASS') {
-        filtersType = 'assetClasses';
+        userSetting['filters.assetClasses'] = filter.id ? [filter.id] : null;
+      } else if (filter.type === 'DATA_SOURCE') {
+        userSetting['filters.dataSource'] = filter.id ? filter.id : null;
+      } else if (filter.type === 'SYMBOL') {
+        userSetting['filters.symbol'] = filter.id ? filter.id : null;
       } else if (filter.type === 'TAG') {
-        filtersType = 'tags';
+        userSetting['filters.tags'] = filter.id ? [filter.id] : null;
       }
-
-      userSetting[`filters.${filtersType}`] = filter.id ? [filter.id] : null;
     }
 
     this.dataService
@@ -197,7 +200,7 @@ export class HeaderComponent implements OnChanges {
   }
 
   public onLogoClick() {
-    if (this.currentRoute === 'home' || this.currentRoute === 'zen') {
+    if (['home', 'zen'].includes(this.currentRoute)) {
       this.layoutService.getShouldReloadSubject().next();
     }
   }
@@ -259,7 +262,18 @@ export class HeaderComponent implements OnChanges {
       this.settingsStorageService.getSetting(KEY_STAY_SIGNED_IN) === 'true'
     );
 
-    this.router.navigate(['/']);
+    this.userService
+      .get()
+      .pipe(takeUntil(this.unsubscribeSubject))
+      .subscribe((user) => {
+        const userLanguage = user?.settings?.language;
+
+        if (userLanguage && document.documentElement.lang !== userLanguage) {
+          window.location.href = `../${userLanguage}`;
+        } else {
+          this.router.navigate(['/']);
+        }
+      });
   }
 
   public ngOnDestroy() {

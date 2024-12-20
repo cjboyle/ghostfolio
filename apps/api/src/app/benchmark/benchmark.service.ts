@@ -234,7 +234,7 @@ export class BenchmarkService {
       return { marketData };
     }
 
-    for (let marketDataItem of marketDataItems) {
+    for (const marketDataItem of marketDataItems) {
       const exchangeRate =
         exchangeRates[`${currentSymbolItem.currency}${userCurrency}`]?.[
           format(marketDataItem.date, DATE_FORMAT)
@@ -437,15 +437,15 @@ export class BenchmarkService {
       };
     });
 
-    if (storeInCache) {
+    if (!enableSharing && storeInCache) {
       const expiration = addHours(new Date(), 2);
 
       await this.redisCacheService.set(
         this.CACHE_KEY_BENCHMARKS,
-        JSON.stringify(<BenchmarkValue>{
+        JSON.stringify({
           benchmarks,
           expiration: expiration.getTime()
-        }),
+        } as BenchmarkValue),
         CACHE_TTL_INFINITE
       );
     }

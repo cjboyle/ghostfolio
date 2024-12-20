@@ -7,8 +7,12 @@ import { UserService } from '@ghostfolio/api/app/user/user.service';
 import { getFactor } from '@ghostfolio/api/helper/portfolio.helper';
 import { AccountClusterRiskCurrentInvestment } from '@ghostfolio/api/models/rules/account-cluster-risk/current-investment';
 import { AccountClusterRiskSingleAccount } from '@ghostfolio/api/models/rules/account-cluster-risk/single-account';
+import { AssetClassClusterRiskEquity } from '@ghostfolio/api/models/rules/asset-class-cluster-risk/equity';
+import { AssetClassClusterRiskFixedIncome } from '@ghostfolio/api/models/rules/asset-class-cluster-risk/fixed-income';
 import { CurrencyClusterRiskBaseCurrencyCurrentInvestment } from '@ghostfolio/api/models/rules/currency-cluster-risk/base-currency-current-investment';
 import { CurrencyClusterRiskCurrentInvestment } from '@ghostfolio/api/models/rules/currency-cluster-risk/current-investment';
+import { EconomicMarketClusterRiskDevelopedMarkets } from '@ghostfolio/api/models/rules/economic-market-cluster-risk/developed-markets';
+import { EconomicMarketClusterRiskEmergingMarkets } from '@ghostfolio/api/models/rules/economic-market-cluster-risk/emerging-markets';
 import { EmergencyFundSetup } from '@ghostfolio/api/models/rules/emergency-fund/emergency-fund-setup';
 import { FeeRatioInitialInvestment } from '@ghostfolio/api/models/rules/fees/fee-ratio-initial-investment';
 import { DataProviderService } from '@ghostfolio/api/services/data-provider/data-provider.service';
@@ -35,7 +39,7 @@ import {
   PortfolioInvestments,
   PortfolioPerformanceResponse,
   PortfolioPosition,
-  PortfolioReport,
+  PortfolioReportResponse,
   PortfolioSummary,
   Position,
   UserSettings
@@ -136,7 +140,7 @@ export class PortfolioService {
         some: {
           SymbolProfile: {
             AND: [
-              { dataSource: <DataSource>filterByDataSource },
+              { dataSource: filterByDataSource as DataSource },
               { symbol: filterBySymbol }
             ]
           }
@@ -411,15 +415,16 @@ export class PortfolioService {
       );
     }
 
-    const dataGatheringItems = positions.map(({ dataSource, symbol }) => {
+    const assetProfileIdentifiers = positions.map(({ dataSource, symbol }) => {
       return {
         dataSource,
         symbol
       };
     });
 
-    const symbolProfiles =
-      await this.symbolProfileService.getSymbolProfiles(dataGatheringItems);
+    const symbolProfiles = await this.symbolProfileService.getSymbolProfiles(
+      assetProfileIdentifiers
+    );
 
     const symbolProfileMap: { [symbol: string]: EnhancedSymbolProfile } = {};
     for (const symbolProfile of symbolProfiles) {
@@ -470,8 +475,7 @@ export class PortfolioService {
 
       if (withMarkets) {
         ({ markets, marketsAdvanced } = this.getMarkets({
-          assetProfile,
-          valueInBaseCurrency
+          assetProfile
         }));
       }
 
@@ -582,6 +586,13 @@ export class PortfolioService {
       };
     }
 
+    let markets: PortfolioDetails['markets'];
+    let marketsAdvanced: PortfolioDetails['marketsAdvanced'];
+
+    if (withMarkets) {
+      ({ markets, marketsAdvanced } = this.getAggregatedMarkets(holdings));
+    }
+
     let summary: PortfolioSummary;
 
     if (withSummary) {
@@ -603,6 +614,8 @@ export class PortfolioService {
       accounts,
       hasErrors,
       holdings,
+      markets,
+      marketsAdvanced,
       platforms,
       summary
     };
@@ -838,7 +851,7 @@ export class PortfolioService {
       if (isEmpty(historicalData)) {
         try {
           historicalData = await this.dataProviderService.getHistoricalRaw({
-            dataGatheringItems: [
+            assetProfileIdentifiers: [
               { dataSource: DataSource.YAHOO, symbol: aSymbol }
             ],
             from: portfolioStart,
@@ -935,13 +948,15 @@ export class PortfolioService {
       currency: this.request.user.Settings.settings.baseCurrency
     });
 
-    let { hasErrors, positions } = await portfolioCalculator.getSnapshot();
+    const portfolioSnapshot = await portfolioCalculator.getSnapshot();
+    const hasErrors = portfolioSnapshot.hasErrors;
+    let positions = portfolioSnapshot.positions;
 
     positions = positions.filter(({ quantity }) => {
       return !quantity.eq(0);
     });
 
-    const dataGatheringItems = positions.map(({ dataSource, symbol }) => {
+    const assetProfileIdentifiers = positions.map(({ dataSource, symbol }) => {
       return {
         dataSource,
         symbol
@@ -949,7 +964,10 @@ export class PortfolioService {
     });
 
     const [dataProviderResponses, symbolProfiles] = await Promise.all([
-      this.dataProviderService.getQuotes({ user, items: dataGatheringItems }),
+      this.dataProviderService.getQuotes({
+        user,
+        items: assetProfileIdentifiers
+      }),
       this.symbolProfileService.getSymbolProfiles(
         positions.map(({ dataSource, symbol }) => {
           return { dataSource, symbol };
@@ -1045,8 +1063,7 @@ export class PortfolioService {
     dateRange = 'max',
     filters,
     impersonationId,
-    userId,
-    withExcludedAccounts = false
+    userId
   }: {
     dateRange?: DateRange;
     filters?: Filter[];
@@ -1058,35 +1075,12 @@ export class PortfolioService {
     const user = await this.userService.user({ id: userId });
     const userCurrency = this.getUserCurrency(user);
 
-    const accountBalances = await this.accountBalanceService.getAccountBalances(
-      { filters, user, withExcludedAccounts }
-    );
-
-    let accountBalanceItems: HistoricalDataItem[] = Object.values(
-      // Reduce the array to a map with unique dates as keys
-      accountBalances.balances.reduce(
-        (
-          map: { [date: string]: HistoricalDataItem },
-          { date, valueInBaseCurrency }
-        ) => {
-          const formattedDate = format(date, DATE_FORMAT);
-
-          if (map[formattedDate]) {
-            // If the value exists, add the current value to the existing one
-            map[formattedDate].value += valueInBaseCurrency;
-          } else {
-            // Otherwise, initialize the value for that date
-            map[formattedDate] = {
-              date: formattedDate,
-              value: valueInBaseCurrency
-            };
-          }
-
-          return map;
-        },
-        {}
-      )
-    );
+    const accountBalanceItems =
+      await this.accountBalanceService.getAccountBalanceItems({
+        filters,
+        userId,
+        userCurrency
+      });
 
     const { activities } =
       await this.orderService.getOrdersForPortfolioCalculator({
@@ -1170,49 +1164,29 @@ export class PortfolioService {
     };
   }
 
-  public async getReport(impersonationId: string): Promise<PortfolioReport> {
+  public async getReport(
+    impersonationId: string
+  ): Promise<PortfolioReportResponse> {
     const userId = await this.getUserId(impersonationId, this.request.user.id);
-    const user = await this.userService.user({ id: userId });
-    const userCurrency = this.getUserCurrency(user);
+    const userSettings = this.request.user.Settings.settings as UserSettings;
 
-    const { activities } =
-      await this.orderService.getOrdersForPortfolioCalculator({
-        userCurrency,
-        userId
-      });
-
-    const portfolioCalculator = this.calculatorFactory.createCalculator({
-      activities,
+    const { accounts, holdings, markets, summary } = await this.getDetails({
+      impersonationId,
       userId,
-      calculationType: PerformanceCalculationType.TWR,
-      currency: this.request.user.Settings.settings.baseCurrency
+      withMarkets: true,
+      withSummary: true
     });
 
-    let { totalFeesWithCurrencyEffect, positions, totalInvestment } =
-      await portfolioCalculator.getSnapshot();
+    const marketsTotalInBaseCurrency = getSum(
+      Object.values(markets).map(({ valueInBaseCurrency }) => {
+        return new Big(valueInBaseCurrency);
+      })
+    ).toNumber();
 
-    positions = positions.filter((item) => !item.quantity.eq(0));
-
-    const portfolioItemsNow: { [symbol: string]: TimelinePosition } = {};
-
-    for (const position of positions) {
-      portfolioItemsNow[position.symbol] = position;
-    }
-
-    const { accounts } = await this.getValueOfAccountsAndPlatforms({
-      activities,
-      portfolioItemsNow,
-      userCurrency,
-      userId
-    });
-
-    const userSettings = <UserSettings>this.request.user.Settings.settings;
-
-    return {
-      rules: {
-        accountClusterRisk: isEmpty(activities)
-          ? undefined
-          : await this.rulesService.evaluate(
+    const rules: PortfolioReportResponse['rules'] = {
+      accountClusterRisk:
+        summary.ordersCount > 0
+          ? await this.rulesService.evaluate(
               [
                 new AccountClusterRiskCurrentInvestment(
                   this.exchangeRateDataService,
@@ -1224,43 +1198,80 @@ export class PortfolioService {
                 )
               ],
               userSettings
-            ),
-        currencyClusterRisk: isEmpty(activities)
-          ? undefined
-          : await this.rulesService.evaluate(
+            )
+          : undefined,
+      assetClassClusterRisk:
+        summary.ordersCount > 0
+          ? await this.rulesService.evaluate(
               [
-                new CurrencyClusterRiskBaseCurrencyCurrentInvestment(
+                new AssetClassClusterRiskEquity(
                   this.exchangeRateDataService,
-                  positions
+                  Object.values(holdings)
                 ),
-                new CurrencyClusterRiskCurrentInvestment(
+                new AssetClassClusterRiskFixedIncome(
                   this.exchangeRateDataService,
-                  positions
+                  Object.values(holdings)
                 )
               ],
               userSettings
-            ),
-        emergencyFund: await this.rulesService.evaluate(
-          [
-            new EmergencyFundSetup(
-              this.exchangeRateDataService,
-              userSettings.emergencyFund
             )
-          ],
-          userSettings
-        ),
-        fees: await this.rulesService.evaluate(
-          [
-            new FeeRatioInitialInvestment(
-              this.exchangeRateDataService,
-              totalInvestment.toNumber(),
-              totalFeesWithCurrencyEffect.toNumber()
+          : undefined,
+      currencyClusterRisk:
+        summary.ordersCount > 0
+          ? await this.rulesService.evaluate(
+              [
+                new CurrencyClusterRiskBaseCurrencyCurrentInvestment(
+                  this.exchangeRateDataService,
+                  Object.values(holdings)
+                ),
+                new CurrencyClusterRiskCurrentInvestment(
+                  this.exchangeRateDataService,
+                  Object.values(holdings)
+                )
+              ],
+              userSettings
             )
-          ],
-          userSettings
-        )
-      }
+          : undefined,
+      economicMarketClusterRisk:
+        summary.ordersCount > 0
+          ? await this.rulesService.evaluate(
+              [
+                new EconomicMarketClusterRiskDevelopedMarkets(
+                  this.exchangeRateDataService,
+                  marketsTotalInBaseCurrency,
+                  markets.developedMarkets.valueInBaseCurrency
+                ),
+                new EconomicMarketClusterRiskEmergingMarkets(
+                  this.exchangeRateDataService,
+                  marketsTotalInBaseCurrency,
+                  markets.emergingMarkets.valueInBaseCurrency
+                )
+              ],
+              userSettings
+            )
+          : undefined,
+      emergencyFund: await this.rulesService.evaluate(
+        [
+          new EmergencyFundSetup(
+            this.exchangeRateDataService,
+            userSettings.emergencyFund
+          )
+        ],
+        userSettings
+      ),
+      fees: await this.rulesService.evaluate(
+        [
+          new FeeRatioInitialInvestment(
+            this.exchangeRateDataService,
+            summary.committedFunds,
+            summary.fees
+          )
+        ],
+        userSettings
+      )
     };
+
+    return { rules, statistics: this.getReportStatistics(rules) };
   }
 
   public async updateTags({
@@ -1279,6 +1290,145 @@ export class PortfolioService {
     userId = await this.getUserId(impersonationId, userId);
 
     await this.orderService.assignTags({ dataSource, symbol, tags, userId });
+  }
+
+  private getAggregatedMarkets(holdings: Record<string, PortfolioPosition>): {
+    markets: PortfolioDetails['markets'];
+    marketsAdvanced: PortfolioDetails['marketsAdvanced'];
+  } {
+    const markets: PortfolioDetails['markets'] = {
+      [UNKNOWN_KEY]: {
+        id: UNKNOWN_KEY,
+        valueInBaseCurrency: 0,
+        valueInPercentage: 0
+      },
+      developedMarkets: {
+        id: 'developedMarkets',
+        valueInBaseCurrency: 0,
+        valueInPercentage: 0
+      },
+      emergingMarkets: {
+        id: 'emergingMarkets',
+        valueInBaseCurrency: 0,
+        valueInPercentage: 0
+      },
+      otherMarkets: {
+        id: 'otherMarkets',
+        valueInBaseCurrency: 0,
+        valueInPercentage: 0
+      }
+    };
+
+    const marketsAdvanced: PortfolioDetails['marketsAdvanced'] = {
+      [UNKNOWN_KEY]: {
+        id: UNKNOWN_KEY,
+        valueInBaseCurrency: 0,
+        valueInPercentage: 0
+      },
+      asiaPacific: {
+        id: 'asiaPacific',
+        valueInBaseCurrency: 0,
+        valueInPercentage: 0
+      },
+      emergingMarkets: {
+        id: 'emergingMarkets',
+        valueInBaseCurrency: 0,
+        valueInPercentage: 0
+      },
+      europe: {
+        id: 'europe',
+        valueInBaseCurrency: 0,
+        valueInPercentage: 0
+      },
+      japan: {
+        id: 'japan',
+        valueInBaseCurrency: 0,
+        valueInPercentage: 0
+      },
+      northAmerica: {
+        id: 'northAmerica',
+        valueInBaseCurrency: 0,
+        valueInPercentage: 0
+      },
+      otherMarkets: {
+        id: 'otherMarkets',
+        valueInBaseCurrency: 0,
+        valueInPercentage: 0
+      }
+    };
+
+    for (const [, position] of Object.entries(holdings)) {
+      const value = position.valueInBaseCurrency;
+
+      if (position.assetClass !== AssetClass.LIQUIDITY) {
+        if (position.countries.length > 0) {
+          markets.developedMarkets.valueInBaseCurrency +=
+            position.markets.developedMarkets * value;
+          markets.emergingMarkets.valueInBaseCurrency +=
+            position.markets.emergingMarkets * value;
+          markets.otherMarkets.valueInBaseCurrency +=
+            position.markets.otherMarkets * value;
+
+          marketsAdvanced.asiaPacific.valueInBaseCurrency +=
+            position.marketsAdvanced.asiaPacific * value;
+          marketsAdvanced.emergingMarkets.valueInBaseCurrency +=
+            position.marketsAdvanced.emergingMarkets * value;
+          marketsAdvanced.europe.valueInBaseCurrency +=
+            position.marketsAdvanced.europe * value;
+          marketsAdvanced.japan.valueInBaseCurrency +=
+            position.marketsAdvanced.japan * value;
+          marketsAdvanced.northAmerica.valueInBaseCurrency +=
+            position.marketsAdvanced.northAmerica * value;
+          marketsAdvanced.otherMarkets.valueInBaseCurrency +=
+            position.marketsAdvanced.otherMarkets * value;
+        } else {
+          markets[UNKNOWN_KEY].valueInBaseCurrency += value;
+          marketsAdvanced[UNKNOWN_KEY].valueInBaseCurrency += value;
+        }
+      }
+    }
+
+    const marketsTotalInBaseCurrency = getSum(
+      Object.values(markets).map(({ valueInBaseCurrency }) => {
+        return new Big(valueInBaseCurrency);
+      })
+    ).toNumber();
+
+    markets.developedMarkets.valueInPercentage =
+      markets.developedMarkets.valueInBaseCurrency / marketsTotalInBaseCurrency;
+    markets.emergingMarkets.valueInPercentage =
+      markets.emergingMarkets.valueInBaseCurrency / marketsTotalInBaseCurrency;
+    markets.otherMarkets.valueInPercentage =
+      markets.otherMarkets.valueInBaseCurrency / marketsTotalInBaseCurrency;
+    markets[UNKNOWN_KEY].valueInPercentage =
+      markets[UNKNOWN_KEY].valueInBaseCurrency / marketsTotalInBaseCurrency;
+
+    const marketsAdvancedTotal =
+      marketsAdvanced.asiaPacific.valueInBaseCurrency +
+      marketsAdvanced.emergingMarkets.valueInBaseCurrency +
+      marketsAdvanced.europe.valueInBaseCurrency +
+      marketsAdvanced.japan.valueInBaseCurrency +
+      marketsAdvanced.northAmerica.valueInBaseCurrency +
+      marketsAdvanced.otherMarkets.valueInBaseCurrency +
+      marketsAdvanced[UNKNOWN_KEY].valueInBaseCurrency;
+
+    marketsAdvanced.asiaPacific.valueInPercentage =
+      marketsAdvanced.asiaPacific.valueInBaseCurrency / marketsAdvancedTotal;
+    marketsAdvanced.emergingMarkets.valueInPercentage =
+      marketsAdvanced.emergingMarkets.valueInBaseCurrency /
+      marketsAdvancedTotal;
+    marketsAdvanced.europe.valueInPercentage =
+      marketsAdvanced.europe.valueInBaseCurrency / marketsAdvancedTotal;
+    marketsAdvanced.japan.valueInPercentage =
+      marketsAdvanced.japan.valueInBaseCurrency / marketsAdvancedTotal;
+    marketsAdvanced.northAmerica.valueInPercentage =
+      marketsAdvanced.northAmerica.valueInBaseCurrency / marketsAdvancedTotal;
+    marketsAdvanced.otherMarkets.valueInPercentage =
+      marketsAdvanced.otherMarkets.valueInBaseCurrency / marketsAdvancedTotal;
+    marketsAdvanced[UNKNOWN_KEY].valueInPercentage =
+      marketsAdvanced[UNKNOWN_KEY].valueInBaseCurrency / marketsAdvancedTotal;
+
+    return { markets, marketsAdvanced };
   }
 
   private async getCashPositions({
@@ -1456,11 +1606,9 @@ export class PortfolioService {
   }
 
   private getMarkets({
-    assetProfile,
-    valueInBaseCurrency
+    assetProfile
   }: {
     assetProfile: EnhancedSymbolProfile;
-    valueInBaseCurrency: Big;
   }) {
     const markets = {
       [UNKNOWN_KEY]: 0,
@@ -1522,17 +1670,42 @@ export class PortfolioService {
             .toNumber();
         }
       }
-    } else {
-      markets[UNKNOWN_KEY] = new Big(markets[UNKNOWN_KEY])
-        .plus(valueInBaseCurrency)
-        .toNumber();
-
-      marketsAdvanced[UNKNOWN_KEY] = new Big(marketsAdvanced[UNKNOWN_KEY])
-        .plus(valueInBaseCurrency)
-        .toNumber();
     }
 
+    markets[UNKNOWN_KEY] = new Big(1)
+      .minus(markets.developedMarkets)
+      .minus(markets.emergingMarkets)
+      .minus(markets.otherMarkets)
+      .toNumber();
+
+    marketsAdvanced[UNKNOWN_KEY] = new Big(1)
+      .minus(marketsAdvanced.asiaPacific)
+      .minus(marketsAdvanced.emergingMarkets)
+      .minus(marketsAdvanced.europe)
+      .minus(marketsAdvanced.japan)
+      .minus(marketsAdvanced.northAmerica)
+      .minus(marketsAdvanced.otherMarkets)
+      .toNumber();
+
     return { markets, marketsAdvanced };
+  }
+
+  private getReportStatistics(
+    evaluatedRules: PortfolioReportResponse['rules']
+  ): PortfolioReportResponse['statistics'] {
+    const rulesActiveCount = Object.values(evaluatedRules)
+      .flat()
+      .filter((rule) => {
+        return rule?.isActive === true;
+      }).length;
+
+    const rulesFulfilledCount = Object.values(evaluatedRules)
+      .flat()
+      .filter((rule) => {
+        return rule?.value === true;
+      }).length;
+
+    return { rulesActiveCount, rulesFulfilledCount };
   }
 
   private getStreaks({
@@ -1796,7 +1969,7 @@ export class PortfolioService {
   }: {
     activities: Activity[];
     filters?: Filter[];
-    portfolioItemsNow: { [p: string]: TimelinePosition };
+    portfolioItemsNow: Record<string, TimelinePosition>;
     userCurrency: string;
     userId: string;
     withExcludedAccounts?: boolean;
@@ -1879,7 +2052,7 @@ export class PortfolioService {
         SymbolProfile,
         type
       } of ordersByAccount) {
-        let currentValueOfSymbolInBaseCurrency =
+        const currentValueOfSymbolInBaseCurrency =
           getFactor(type) *
           quantity *
           (portfolioItemsNow[SymbolProfile.symbol]?.marketPriceInBaseCurrency ??

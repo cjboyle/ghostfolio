@@ -1,4 +1,3 @@
-import { LookupItem } from '@ghostfolio/api/app/symbol/interfaces/lookup-item.interface';
 import { ConfigurationService } from '@ghostfolio/api/services/configuration/configuration.service';
 import {
   DataProviderInterface,
@@ -17,7 +16,11 @@ import {
   REPLACE_NAME_PARTS
 } from '@ghostfolio/common/config';
 import { DATE_FORMAT, isCurrency } from '@ghostfolio/common/helper';
-import { DataProviderInfo } from '@ghostfolio/common/interfaces';
+import {
+  DataProviderInfo,
+  LookupItem,
+  LookupResponse
+} from '@ghostfolio/common/interfaces';
 import { MarketState } from '@ghostfolio/common/types';
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -43,7 +46,7 @@ export class EodHistoricalDataService implements DataProviderInterface {
     this.apiKey = this.configurationService.get('API_KEY_EOD_HISTORICAL_DATA');
   }
 
-  public canHandle(symbol: string) {
+  public canHandle() {
     return true;
   }
 
@@ -163,10 +166,10 @@ export class EodHistoricalDataService implements DataProviderInterface {
       ).json<any>();
 
       return response.reduce(
-        (result, { close, date }, index, array) => {
-          if (isNumber(close)) {
+        (result, { adjusted_close, date }) => {
+          if (isNumber(adjusted_close)) {
             result[this.convertFromEodSymbol(symbol)][date] = {
-              marketPrice: close
+              marketPrice: adjusted_close
             };
           } else {
             Logger.error(
@@ -203,7 +206,7 @@ export class EodHistoricalDataService implements DataProviderInterface {
     requestTimeout = this.configurationService.get('REQUEST_TIMEOUT'),
     symbols
   }: GetQuotesParams): Promise<{ [symbol: string]: IDataProviderResponse }> {
-    let response: { [symbol: string]: IDataProviderResponse } = {};
+    const response: { [symbol: string]: IDataProviderResponse } = {};
 
     if (symbols.length <= 0) {
       return response;
@@ -317,9 +320,7 @@ export class EodHistoricalDataService implements DataProviderInterface {
     return 'AAPL.US';
   }
 
-  public async search({
-    query
-  }: GetSearchParams): Promise<{ items: LookupItem[] }> {
+  public async search({ query }: GetSearchParams): Promise<LookupResponse> {
     const searchResult = await this.getSearchResult(query);
 
     return {
@@ -409,14 +410,12 @@ export class EodHistoricalDataService implements DataProviderInterface {
     return name;
   }
 
-  private async getSearchResult(aQuery: string): Promise<
-    (LookupItem & {
+  private async getSearchResult(aQuery: string) {
+    let searchResult: (LookupItem & {
       assetClass: AssetClass;
       assetSubClass: AssetSubClass;
       isin: string;
-    })[]
-  > {
-    let searchResult = [];
+    })[] = [];
 
     try {
       const abortController = new AbortController();
@@ -455,9 +454,9 @@ export class EodHistoricalDataService implements DataProviderInterface {
       let message = error;
 
       if (error?.code === 'ABORT_ERR') {
-        message = `RequestError: The operation to search for ${aQuery} was aborted because the request to the data provider took more than ${this.configurationService.get(
-          'REQUEST_TIMEOUT'
-        )}ms`;
+        message = `RequestError: The operation to search for ${aQuery} was aborted because the request to the data provider took more than ${(
+          this.configurationService.get('REQUEST_TIMEOUT') / 1000
+        ).toFixed(3)} seconds`;
       }
 
       Logger.error(message, 'EodHistoricalDataService');
@@ -499,6 +498,10 @@ export class EodHistoricalDataService implements DataProviderInterface {
       case 'etf':
         assetClass = AssetClass.EQUITY;
         assetSubClass = AssetSubClass.ETF;
+        break;
+      case 'fund':
+        assetClass = AssetClass.EQUITY;
+        assetSubClass = AssetSubClass.MUTUALFUND;
         break;
     }
 

@@ -57,13 +57,12 @@ export class PublicController {
     }
 
     const [
-      { holdings },
+      { holdings, markets },
       { performance: performance1d },
       { performance: performanceMax },
       { performance: performanceYtd }
     ] = await Promise.all([
       this.portfolioService.getDetails({
-        filters: [{ id: 'EQUITY', type: 'ASSET_CLASS' }],
         impersonationId: access.userId,
         userId: user.id,
         withMarkets: true
@@ -77,8 +76,13 @@ export class PublicController {
       })
     ]);
 
+    Object.values(markets ?? {}).forEach((market) => {
+      delete market.valueInBaseCurrency;
+    });
+
     const publicPortfolioResponse: PublicPortfolioResponse = {
       hasDetails,
+      markets,
       alias: access.alias,
       holdings: {},
       performance: {
@@ -114,6 +118,7 @@ export class PublicController {
       publicPortfolioResponse.holdings[symbol] = {
         allocationInPercentage:
           portfolioPosition.valueInBaseCurrency / totalValue,
+        assetClass: hasDetails ? portfolioPosition.assetClass : undefined,
         countries: hasDetails ? portfolioPosition.countries : [],
         currency: hasDetails ? portfolioPosition.currency : undefined,
         dataSource: portfolioPosition.dataSource,

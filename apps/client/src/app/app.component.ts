@@ -47,6 +47,7 @@ export class AppComponent implements OnDestroy, OnInit {
 
   public canCreateAccount: boolean;
   public currentRoute: string;
+  public currentSubRoute: string;
   public currentYear = new Date().getFullYear();
   public deviceType: string;
   public hasImpersonationId: boolean;
@@ -54,6 +55,9 @@ export class AppComponent implements OnDestroy, OnInit {
   public hasPermissionForStatistics: boolean;
   public hasPermissionForSubscription: boolean;
   public hasPermissionToAccessFearAndGreedIndex: boolean;
+  public hasPermissionToChangeDateRange: boolean;
+  public hasPermissionToChangeFilters: boolean;
+  public hasPromotion = false;
   public hasTabs = false;
   public info: InfoItem;
   public pageTitle: string;
@@ -133,6 +137,10 @@ export class AppComponent implements OnDestroy, OnInit {
       permissions.enableFearAndGreedIndex
     );
 
+    this.hasPromotion =
+      !!this.info?.subscriptionOffers?.default?.coupon ||
+      !!this.info?.subscriptionOffers?.default?.durationExtension;
+
     this.impersonationStorageService
       .onChangeHasImpersonation()
       .pipe(takeUntil(this.unsubscribeSubject))
@@ -147,10 +155,40 @@ export class AppComponent implements OnDestroy, OnInit {
         const urlSegmentGroup = urlTree.root.children[PRIMARY_OUTLET];
         const urlSegments = urlSegmentGroup.segments;
         this.currentRoute = urlSegments[0].path;
+        this.currentSubRoute = urlSegments[1]?.path;
+
+        if (
+          (this.currentRoute === 'home' && !this.currentSubRoute) ||
+          (this.currentRoute === 'home' &&
+            this.currentSubRoute === 'holdings') ||
+          (this.currentRoute === 'portfolio' && !this.currentSubRoute) ||
+          (this.currentRoute === 'zen' && !this.currentSubRoute) ||
+          (this.currentRoute === 'zen' && this.currentSubRoute === 'holdings')
+        ) {
+          this.hasPermissionToChangeDateRange = true;
+        } else {
+          this.hasPermissionToChangeDateRange = false;
+        }
+
+        if (
+          (this.currentRoute === 'home' &&
+            this.currentSubRoute === 'holdings') ||
+          (this.currentRoute === 'portfolio' && !this.currentSubRoute) ||
+          (this.currentRoute === 'portfolio' &&
+            this.currentSubRoute === 'activities') ||
+          (this.currentRoute === 'portfolio' &&
+            this.currentSubRoute === 'allocations') ||
+          (this.currentRoute === 'zen' && this.currentSubRoute === 'holdings')
+        ) {
+          this.hasPermissionToChangeFilters = true;
+        } else {
+          this.hasPermissionToChangeFilters = false;
+        }
 
         this.hasTabs =
           (this.currentRoute === this.routerLinkAbout[0].slice(1) ||
             this.currentRoute === this.routerLinkFaq[0].slice(1) ||
+            this.currentRoute === this.routerLinkResources[0].slice(1) ||
             this.currentRoute === 'account' ||
             this.currentRoute === 'admin' ||
             this.currentRoute === 'home' ||
@@ -166,7 +204,6 @@ export class AppComponent implements OnDestroy, OnInit {
             this.currentRoute === 'p' ||
             this.currentRoute === this.routerLinkPricing[0].slice(1) ||
             this.currentRoute === this.routerLinkRegister[0].slice(1) ||
-            this.currentRoute === this.routerLinkResources[0].slice(1) ||
             this.currentRoute === 'start') &&
           this.deviceType !== 'mobile';
 
@@ -182,6 +219,8 @@ export class AppComponent implements OnDestroy, OnInit {
             this.changeDetectorRef.markForCheck();
           });
         }
+
+        this.changeDetectorRef.markForCheck();
       });
 
     this.userService.stateChanged
@@ -196,6 +235,14 @@ export class AppComponent implements OnDestroy, OnInit {
 
         this.hasInfoMessage =
           this.canCreateAccount || !!this.user?.systemMessage;
+
+        this.hasPromotion =
+          !!this.info?.subscriptionOffers?.[
+            this.user?.subscription?.offer ?? 'default'
+          ]?.coupon ||
+          !!this.info?.subscriptionOffers?.[
+            this.user?.subscription?.offer ?? 'default'
+          ]?.durationExtension;
 
         this.initializeTheme(this.user?.settings.colorScheme);
 
@@ -258,7 +305,7 @@ export class AppComponent implements OnDestroy, OnInit {
 
         const dialogRef = this.dialog.open(GfHoldingDetailDialogComponent, {
           autoFocus: false,
-          data: <HoldingDetailDialogParams>{
+          data: {
             dataSource,
             symbol,
             baseCurrency: this.user?.settings?.baseCurrency,
@@ -278,9 +325,8 @@ export class AppComponent implements OnDestroy, OnInit {
               hasPermission(this.user?.permissions, permissions.updateOrder) &&
               !this.user?.settings?.isRestrictedView,
             locale: this.user?.settings?.locale
-          },
-          height: this.deviceType === 'mobile' ? '97.5vh' : '80vh',
-          maxWidth: this.deviceType === 'mobile' ? '95vw' : '50rem',
+          } as HoldingDetailDialogParams,
+          height: this.deviceType === 'mobile' ? '98vh' : '80vh',
           width: this.deviceType === 'mobile' ? '100vw' : '50rem'
         });
 

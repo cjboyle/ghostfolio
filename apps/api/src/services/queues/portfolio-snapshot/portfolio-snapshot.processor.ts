@@ -1,3 +1,4 @@
+import { AccountBalanceService } from '@ghostfolio/api/app/account-balance/account-balance.service';
 import { OrderService } from '@ghostfolio/api/app/order/order.service';
 import {
   PerformanceCalculationType,
@@ -8,9 +9,9 @@ import { RedisCacheService } from '@ghostfolio/api/app/redis-cache/redis-cache.s
 import { ConfigurationService } from '@ghostfolio/api/services/configuration/configuration.service';
 import {
   CACHE_TTL_INFINITE,
-  DEFAULT_PROCESSOR_CONCURRENCY_PORTFOLIO_SNAPSHOT,
+  DEFAULT_PROCESSOR_PORTFOLIO_SNAPSHOT_COMPUTATION_CONCURRENCY,
   PORTFOLIO_SNAPSHOT_PROCESS_JOB_NAME,
-  PORTFOLIO_SNAPSHOT_QUEUE
+  PORTFOLIO_SNAPSHOT_COMPUTATION_QUEUE
 } from '@ghostfolio/common/config';
 
 import { Process, Processor } from '@nestjs/bull';
@@ -21,9 +22,10 @@ import { addMilliseconds } from 'date-fns';
 import { IPortfolioSnapshotQueueJob } from './interfaces/portfolio-snapshot-queue-job.interface';
 
 @Injectable()
-@Processor(PORTFOLIO_SNAPSHOT_QUEUE)
+@Processor(PORTFOLIO_SNAPSHOT_COMPUTATION_QUEUE)
 export class PortfolioSnapshotProcessor {
   public constructor(
+    private readonly accountBalanceService: AccountBalanceService,
     private readonly calculatorFactory: PortfolioCalculatorFactory,
     private readonly configurationService: ConfigurationService,
     private readonly orderService: OrderService,
@@ -32,8 +34,8 @@ export class PortfolioSnapshotProcessor {
 
   @Process({
     concurrency: parseInt(
-      process.env.PROCESSOR_CONCURRENCY_PORTFOLIO_SNAPSHOT ??
-        DEFAULT_PROCESSOR_CONCURRENCY_PORTFOLIO_SNAPSHOT.toString(),
+      process.env.PROCESSOR_PORTFOLIO_SNAPSHOT_COMPUTATION_CONCURRENCY ??
+        DEFAULT_PROCESSOR_PORTFOLIO_SNAPSHOT_COMPUTATION_CONCURRENCY.toString(),
       10
     ),
     name: PORTFOLIO_SNAPSHOT_PROCESS_JOB_NAME
@@ -56,7 +58,15 @@ export class PortfolioSnapshotProcessor {
           userId: job.data.userId
         });
 
+      const accountBalanceItems =
+        await this.accountBalanceService.getAccountBalanceItems({
+          filters: job.data.filters,
+          userCurrency: job.data.userCurrency,
+          userId: job.data.userId
+        });
+
       const portfolioCalculator = this.calculatorFactory.createCalculator({
+        accountBalanceItems,
         activities,
         calculationType: PerformanceCalculationType.TWR,
         currency: job.data.userCurrency,
@@ -76,7 +86,9 @@ export class PortfolioSnapshotProcessor {
 
       const expiration = addMilliseconds(
         new Date(),
-        this.configurationService.get('CACHE_QUOTES_TTL')
+        (snapshot?.errors?.length ?? 0) === 0
+          ? this.configurationService.get('CACHE_QUOTES_TTL')
+          : 0
       );
 
       this.redisCacheService.set(
@@ -84,10 +96,10 @@ export class PortfolioSnapshotProcessor {
           filters: job.data.filters,
           userId: job.data.userId
         }),
-        JSON.stringify(<PortfolioSnapshotValue>(<unknown>{
+        JSON.stringify({
           expiration: expiration.getTime(),
           portfolioSnapshot: snapshot
-        })),
+        } as unknown as PortfolioSnapshotValue),
         CACHE_TTL_INFINITE
       );
 

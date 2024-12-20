@@ -224,7 +224,7 @@ export class ImportService {
 
     for (const activity of activitiesDto) {
       if (!activity.dataSource) {
-        if (activity.type === 'ITEM' || activity.type === 'LIABILITY') {
+        if (['FEE', 'INTEREST', 'ITEM', 'LIABILITY'].includes(activity.type)) {
           activity.dataSource = DataSource.MANUAL;
         } else {
           activity.dataSource =
@@ -266,21 +266,18 @@ export class ImportService {
 
     const activities: Activity[] = [];
 
-    for (let [
-      index,
-      {
-        accountId,
-        comment,
-        currency,
-        date,
-        error,
-        fee,
-        quantity,
-        SymbolProfile,
-        type,
-        unitPrice
-      }
-    ] of activitiesExtendedWithErrors.entries()) {
+    for (const [index, activity] of activitiesExtendedWithErrors.entries()) {
+      const accountId = activity.accountId;
+      const comment = activity.comment;
+      const currency = activity.currency;
+      const date = activity.date;
+      const error = activity.error;
+      let fee = activity.fee;
+      const quantity = activity.quantity;
+      const SymbolProfile = activity.SymbolProfile;
+      const type = activity.type;
+      let unitPrice = activity.unitPrice;
+
       const assetProfile = assetProfiles[
         getAssetProfileIdentifier({
           dataSource: SymbolProfile.dataSource,
@@ -359,6 +356,7 @@ export class ImportService {
           quantity,
           type,
           unitPrice,
+          Account: validatedAccount,
           accountId: validatedAccount?.id,
           accountUserId: undefined,
           createdAt: new Date(),
@@ -383,10 +381,10 @@ export class ImportService {
             symbolMapping,
             updatedAt,
             url,
+            comment: assetProfile.comment,
             currency: assetProfile.currency,
-            comment: assetProfile.comment
+            userId: dataSource === 'MANUAL' ? user.id : undefined
           },
-          Account: validatedAccount,
           symbolProfileId: undefined,
           updatedAt: new Date(),
           userId: user.id
@@ -409,7 +407,8 @@ export class ImportService {
               create: {
                 dataSource,
                 symbol,
-                currency: assetProfile.currency
+                currency: assetProfile.currency,
+                userId: dataSource === 'MANUAL' ? user.id : undefined
               },
               where: {
                 dataSource_symbol: {
@@ -491,12 +490,13 @@ export class ImportService {
     userCurrency: string;
     userId: string;
   }): Promise<Partial<Activity>[]> {
-    let { activities: existingActivities } = await this.orderService.getOrders({
-      userCurrency,
-      userId,
-      includeDrafts: true,
-      withExcludedAccounts: true
-    });
+    const { activities: existingActivities } =
+      await this.orderService.getOrders({
+        userCurrency,
+        userId,
+        includeDrafts: true,
+        withExcludedAccounts: true
+      });
 
     return activitiesDto.map(
       ({
@@ -584,12 +584,13 @@ export class ImportService {
     const assetProfiles: {
       [assetProfileIdentifier: string]: Partial<SymbolProfile>;
     } = {};
+    const dataSources = await this.dataProviderService.getDataSources();
 
     for (const [
       index,
       { currency, dataSource, symbol, type }
     ] of activitiesDto.entries()) {
-      if (!this.configurationService.get('DATA_SOURCES').includes(dataSource)) {
+      if (!dataSources.includes(dataSource)) {
         throw new Error(
           `activities.${index}.dataSource ("${dataSource}") is not valid`
         );

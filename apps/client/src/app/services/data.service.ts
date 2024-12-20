@@ -3,6 +3,7 @@ import { CreateAccountBalanceDto } from '@ghostfolio/api/app/account-balance/cre
 import { CreateAccountDto } from '@ghostfolio/api/app/account/create-account.dto';
 import { TransferBalanceDto } from '@ghostfolio/api/app/account/transfer-balance.dto';
 import { UpdateAccountDto } from '@ghostfolio/api/app/account/update-account.dto';
+import { UpdateBulkMarketDataDto } from '@ghostfolio/api/app/admin/update-bulk-market-data.dto';
 import { CreateOrderDto } from '@ghostfolio/api/app/order/create-order.dto';
 import {
   Activities,
@@ -10,7 +11,6 @@ import {
 } from '@ghostfolio/api/app/order/interfaces/activities.interface';
 import { UpdateOrderDto } from '@ghostfolio/api/app/order/update-order.dto';
 import { PortfolioHoldingDetail } from '@ghostfolio/api/app/portfolio/interfaces/portfolio-holding-detail.interface';
-import { LookupItem } from '@ghostfolio/api/app/symbol/interfaces/lookup-item.interface';
 import { SymbolItem } from '@ghostfolio/api/app/symbol/interfaces/symbol-item.interface';
 import { DeleteOwnUserDto } from '@ghostfolio/api/app/user/delete-own-user.dto';
 import { UserItem } from '@ghostfolio/api/app/user/interfaces/user-item.interface';
@@ -22,7 +22,7 @@ import {
   Access,
   AccountBalancesResponse,
   Accounts,
-  AdminMarketDataDetails,
+  ApiKeyResponse,
   AssetProfileIdentifier,
   BenchmarkMarketDataDetails,
   BenchmarkResponse,
@@ -30,13 +30,15 @@ import {
   Filter,
   ImportResponse,
   InfoItem,
+  LookupResponse,
+  MarketDataDetailsResponse,
   OAuthResponse,
   PortfolioDetails,
   PortfolioDividends,
   PortfolioHoldingsResponse,
   PortfolioInvestments,
   PortfolioPerformanceResponse,
-  PortfolioReport,
+  PortfolioReportResponse,
   PublicPortfolioResponse,
   User
 } from '@ghostfolio/common/interfaces';
@@ -50,6 +52,7 @@ import { SortDirection } from '@angular/material/sort';
 import {
   AccountBalance,
   DataSource,
+  MarketData,
   Order as OrderModel,
   Tag
 } from '@prisma/client';
@@ -230,8 +233,8 @@ export class DataService {
   public fetchActivity(aActivityId: string) {
     return this.http.get<Activity>(`/api/v1/order/${aActivityId}`).pipe(
       map((activity) => {
-        activity.createdAt = parseISO(<string>(<unknown>activity.createdAt));
-        activity.date = parseISO(<string>(<unknown>activity.date));
+        activity.createdAt = parseISO(activity.createdAt as unknown as string);
+        activity.date = parseISO(activity.date as unknown as string);
 
         return activity;
       })
@@ -287,9 +290,9 @@ export class DataService {
   }
 
   public deleteActivities({ filters }) {
-    let params = this.buildFiltersAsQueryParams({ filters });
+    const params = this.buildFiltersAsQueryParams({ filters });
 
-    return this.http.delete<any>(`/api/v1/order`, { params });
+    return this.http.delete<any>('/api/v1/order', { params });
   }
 
   public deleteActivity(aId: string) {
@@ -315,7 +318,7 @@ export class DataService {
   public fetchAsset({
     dataSource,
     symbol
-  }: AssetProfileIdentifier): Observable<AdminMarketDataDetails> {
+  }: AssetProfileIdentifier): Observable<MarketDataDetailsResponse> {
     return this.http.get<any>(`/api/v1/asset/${dataSource}/${symbol}`).pipe(
       map((data) => {
         for (const item of data.marketData) {
@@ -387,8 +390,8 @@ export class DataService {
         map((data) => {
           if (data.orders) {
             for (const order of data.orders) {
-              order.createdAt = parseISO(<string>(<unknown>order.createdAt));
-              order.date = parseISO(<string>(<unknown>order.date));
+              order.createdAt = parseISO(order.createdAt as unknown as string);
+              order.date = parseISO(order.date as unknown as string);
             }
           }
 
@@ -399,9 +402,9 @@ export class DataService {
 
   public fetchInfo(): InfoItem {
     const info = cloneDeep((window as any).info);
-    const utmSource = <'ios' | 'trusted-web-activity'>(
-      window.localStorage.getItem('utm_source')
-    );
+    const utmSource = window.localStorage.getItem('utm_source') as
+      | 'ios'
+      | 'trusted-web-activity';
 
     info.globalPermissions = filterGlobalPermissions(
       info.globalPermissions,
@@ -428,6 +431,25 @@ export class DataService {
       '/api/v1/portfolio/investments',
       { params }
     );
+  }
+
+  public fetchMarketDataBySymbol({
+    dataSource,
+    symbol
+  }: {
+    dataSource: DataSource;
+    symbol: string;
+  }): Observable<MarketDataDetailsResponse> {
+    return this.http
+      .get<any>(`/api/v1/market-data/${dataSource}/${symbol}`)
+      .pipe(
+        map((data) => {
+          for (const item of data.marketData) {
+            item.date = parseISO(item.date);
+          }
+          return data;
+        })
+      );
   }
 
   public fetchSymbolItem({
@@ -464,10 +486,10 @@ export class DataService {
     }
 
     return this.http
-      .get<{ items: LookupItem[] }>('/api/v1/symbol/lookup', { params })
+      .get<LookupResponse>('/api/v1/symbol/lookup', { params })
       .pipe(
-        map((respose) => {
-          return respose.items;
+        map(({ items }) => {
+          return items;
         })
       );
   }
@@ -532,7 +554,7 @@ export class DataService {
   }: {
     filters?: Filter[];
     range?: DateRange;
-  }) {
+  } = {}) {
     let params = this.buildFiltersAsQueryParams({ filters });
 
     if (range) {
@@ -612,7 +634,7 @@ export class DataService {
   }
 
   public fetchPortfolioReport() {
-    return this.http.get<PortfolioReport>('/api/v1/portfolio/report');
+    return this.http.get<PortfolioReportResponse>('/api/v1/portfolio/report');
   }
 
   public fetchPublicPortfolio(aAccessId: string) {
@@ -636,36 +658,54 @@ export class DataService {
   }
 
   public loginAnonymous(accessToken: string) {
-    return this.http.post<OAuthResponse>(`/api/v1/auth/anonymous`, {
+    return this.http.post<OAuthResponse>('/api/v1/auth/anonymous', {
       accessToken
     });
   }
 
   public postAccess(aAccess: CreateAccessDto) {
-    return this.http.post<OrderModel>(`/api/v1/access`, aAccess);
+    return this.http.post<OrderModel>('/api/v1/access', aAccess);
   }
 
   public postAccount(aAccount: CreateAccountDto) {
-    return this.http.post<OrderModel>(`/api/v1/account`, aAccount);
+    return this.http.post<OrderModel>('/api/v1/account', aAccount);
   }
 
   public postAccountBalance(aAccountBalance: CreateAccountBalanceDto) {
     return this.http.post<AccountBalance>(
-      `/api/v1/account-balance`,
+      '/api/v1/account-balance',
       aAccountBalance
     );
   }
 
+  public postApiKey() {
+    return this.http.post<ApiKeyResponse>('/api/v1/api-keys', {});
+  }
+
   public postBenchmark(benchmark: AssetProfileIdentifier) {
-    return this.http.post(`/api/v1/benchmark`, benchmark);
+    return this.http.post('/api/v1/benchmark', benchmark);
+  }
+
+  public postMarketData({
+    dataSource,
+    marketData,
+    symbol
+  }: {
+    dataSource: DataSource;
+    marketData: UpdateBulkMarketDataDto;
+    symbol: string;
+  }) {
+    const url = `/api/v1/market-data/${dataSource}/${symbol}`;
+
+    return this.http.post<MarketData>(url, marketData);
   }
 
   public postOrder(aOrder: CreateOrderDto) {
-    return this.http.post<OrderModel>(`/api/v1/order`, aOrder);
+    return this.http.post<OrderModel>('/api/v1/order', aOrder);
   }
 
   public postUser() {
-    return this.http.post<UserItem>(`/api/v1/user`, {});
+    return this.http.post<UserItem>('/api/v1/user', {});
   }
 
   public putAccount(aAccount: UpdateAccountDto) {
@@ -692,7 +732,7 @@ export class DataService {
   }
 
   public putUserSetting(aData: UpdateUserSettingDto) {
-    return this.http.put<User>(`/api/v1/user/setting`, aData);
+    return this.http.put<User>('/api/v1/user/setting', aData);
   }
 
   public redeemCoupon(couponCode: string) {
@@ -715,9 +755,9 @@ export class DataService {
 
   public updateInfo() {
     this.http.get<InfoItem>('/api/v1/info').subscribe((info) => {
-      const utmSource = <'ios' | 'trusted-web-activity'>(
-        window.localStorage.getItem('utm_source')
-      );
+      const utmSource = window.localStorage.getItem('utm_source') as
+        | 'ios'
+        | 'trusted-web-activity';
 
       info.globalPermissions = filterGlobalPermissions(
         info.globalPermissions,

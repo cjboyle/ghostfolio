@@ -1,4 +1,3 @@
-import { LookupItem } from '@ghostfolio/api/app/symbol/interfaces/lookup-item.interface';
 import { ConfigurationService } from '@ghostfolio/api/services/configuration/configuration.service';
 import {
   DataProviderInterface,
@@ -14,7 +13,10 @@ import {
 import { PrismaService } from '@ghostfolio/api/services/prisma/prisma.service';
 import { SymbolProfileService } from '@ghostfolio/api/services/symbol-profile/symbol-profile.service';
 import { DATE_FORMAT, parseDate } from '@ghostfolio/common/helper';
-import { DataProviderInfo } from '@ghostfolio/common/interfaces';
+import {
+  DataProviderInfo,
+  LookupResponse
+} from '@ghostfolio/common/interfaces';
 
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource, SymbolProfile } from '@prisma/client';
@@ -29,7 +31,7 @@ export class GoogleSheetsService implements DataProviderInterface {
     private readonly symbolProfileService: SymbolProfileService
   ) {}
 
-  public canHandle(symbol: string) {
+  public canHandle() {
     return true;
   }
 
@@ -76,7 +78,7 @@ export class GoogleSheetsService implements DataProviderInterface {
       } = {};
 
       rows
-        .filter((row, index) => {
+        .filter((_row, index) => {
           return index >= 1;
         })
         .forEach((row) => {
@@ -157,9 +159,7 @@ export class GoogleSheetsService implements DataProviderInterface {
     return 'INDEXSP:.INX';
   }
 
-  public async search({
-    query
-  }: GetSearchParams): Promise<{ items: LookupItem[] }> {
+  public async search({ query }: GetSearchParams): Promise<LookupResponse> {
     const items = await this.prismaService.symbolProfile.findMany({
       select: {
         assetClass: true,
